@@ -8918,3 +8918,18 @@ TSVConnReenable(TSVConn vconn)
     }
   }
 }
+
+TSHttpTxn
+TSVConnGetHttpTxn(TSVConn vconn)
+{
+    NetVConnection *vc = reinterpret_cast<NetVConnection *>(vconn);
+    UnixNetVConnection *unix_netvc = dynamic_cast<UnixNetVConnection *>(vc);
+    if (unix_netvc != NULL) {
+        TSHttpTxn txnp = (TSHttpTxn) unix_netvc->action_.continuation;
+
+        if (sdk_sanity_check_txn(txnp) == TS_SUCCESS)
+            return txnp;
+    }
+
+    return NULL;
+}

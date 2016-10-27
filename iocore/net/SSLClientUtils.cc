@@ -152,7 +152,9 @@ SSLInitClientContext(const SSLConfigParams *params)
     }
   }
 
-  if (params->clientVerify) {
+  if (params->clientVerify == 2) {
+      SSL_CTX_set_verify(client_ctx, SSL_VERIFY_ASYNC, NULL);
+  } else if (params->clientVerify) {
     SSL_CTX_set_verify(client_ctx, SSL_VERIFY_PEER, verify_callback);
     SSL_CTX_set_verify_depth(client_ctx, params->client_verify_depth);
 

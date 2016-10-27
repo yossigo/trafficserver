@@ -841,6 +841,7 @@ SSLNetVConnection::SSLNetVConnection()
     handShakeBioStored(0),
     sslPreAcceptHookState(SSL_HOOKS_INIT),
     sslHandshakeHookState(HANDSHAKE_HOOKS_PRE),
+    sslCertVerifyHookState(SSL_CERT_VERIFY_HOOK_INIT),
     npnSet(NULL),
     npnEndpoint(NULL),
     sessionAcceptPtr(NULL),
@@ -1252,6 +1253,11 @@ SSLNetVConnection::sslServerHandShakeEvent(int &err)
 int
 SSLNetVConnection::sslClientHandShakeEvent(int &err)
 {
+  if (SSL_CERT_VERIFY_HOOK_INIT != sslCertVerifyHookState &&
+      SSL_CERT_VERIFY_HOOK_DONE != sslCertVerifyHookState) {
+    return SSL_WAIT_FOR_HOOK;
+  }
+
 #if TS_USE_TLS_SNI
   if (options.sni_servername) {
     if (SSL_set_tlsext_host_name(ssl, options.sni_servername)) {
@@ -1308,6 +1314,19 @@ SSLNetVConnection::sslClientHandShakeEvent(int &err)
     SSL_INCREMENT_DYN_STAT(ssl_error_want_x509_lookup);
     Debug("ssl.error", "SSLNetVConnection::sslClientHandShakeEvent, SSL_ERROR_WANT_X509_LOOKUP");
     TraceIn(trace, get_remote_addr(), get_remote_port(), "SSL client handshake ERROR_WANT_X509_LOOKUP");
+    break;
+
+  case SSL_ERROR_WANT_X509_VERIFY:
+    Debug("ssl.error", "SSLNetVConnection::sslClientHandShakeEvent, SSL_ERROR_WANT_X509_VERIFY");
+    TraceIn(trace, get_remote_addr(), get_remote_port(), "SSL client handshake ERROR_WANT_X509_VERIFY");
+
+    // Initiate async certificate verification
+    ink_assert(sslCertVerifyHookState == SSL_CERT_VERIFY_HOOK_INIT);
+    if (callCertVerifyHook()) {
+      return EVENT_CONT;
+    } else {
+      return SSL_WAIT_FOR_HOOK;
+    }
     break;
 
   case SSL_ERROR_WANT_ACCEPT:
@@ -1407,6 +1426,23 @@ SSLNetVConnection::select_next_protocol(SSL *ssl, const unsigned char **out, uns
 void
 SSLNetVConnection::reenable(NetHandler *nh)
 {
+  if (sslClientConnection) {
+    Debug("ssl.verify", "Reenable called on clietn connection, sslCertVerifyHookState=%d",
+        sslCertVerifyHookState);
+
+    if (curHook != NULL) {
+      curHook = curHook->next();
+    }
+    if (curHook != NULL) {
+      curHook->invoke(TS_SSL_CERT_VERIFY_HOOK, this);
+      return;
+    } else {
+      sslCertVerifyHookState = SSL_CERT_VERIFY_HOOK_DONE;
+    }
+    this->writeReschedule(nh);
+    return;
+  } 
+
   if (sslPreAcceptHookState != SSL_HOOKS_DONE) {
     sslPreAcceptHookState = SSL_HOOKS_INVOKE;
   } else if (sslHandshakeHookState == HANDSHAKE_HOOKS_INVOKE) {
@@ -1445,6 +1481,28 @@ SSLNetVConnection::sslContextSet(void *ctx)
   bool zret      = false;
 #endif
   return zret;
+}
+
+bool
+SSLNetVConnection::callCertVerifyHook()
+{
+  Debug("ssl", "callCertVerifyHook sslCertVerifyHookState=%d", sslCertVerifyHookState);
+
+  if (SSL_CERT_VERIFY_HOOK_INIT == sslCertVerifyHookState) {
+    ink_assert(curHook == NULL);
+    curHook = ssl_hooks->get(TS_SSL_CERT_VERIFY_INTERNAL_HOOK);
+  }
+
+  bool reenabled = true;
+  if (curHook != NULL) {
+    sslCertVerifyHookState = SSL_CERT_VERIFY_HOOK_INVOKE;
+    curHook->invoke(TS_SSL_CERT_VERIFY_HOOK, this);
+    reenabled = (sslCertVerifyHookState != SSL_CERT_VERIFY_HOOK_INVOKE);
+  } else {
+    sslCertVerifyHookState = SSL_CERT_VERIFY_HOOK_DONE;
+  }
+
+  return reenabled;
 }
 
 bool

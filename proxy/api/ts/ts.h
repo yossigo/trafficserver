@@ -2385,6 +2385,17 @@ tsapi const char *TSHttpHookNameLookup(TSHttpHookID hook);
 */
 tsapi const char *TSHttpEventNameLookup(TSEvent event);
 
+/**
+   Return a TSHttpTxn associated with a specified TSVConn.
+
+   This is a bit hackish because TSVConns are not necessarily associated with
+   an HTTP transaction, but calling it in the context of a TSVConn callback
+   is safe.
+
+   @return a TSHttpTxn or NULL if it does not seem associated.
+*/
+tsapi TSHttpTxn TSVConnGetHttpTxn(TSVConn vcp);
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */

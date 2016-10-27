@@ -233,6 +233,9 @@ public:
     return eosRcvd;
   }
 
+  // This handles async certificate verification on client connections.
+  bool callCertVerifyHook();
+
   bool
   getSSLTrace() const
   {
@@ -304,6 +307,13 @@ private:
     HANDSHAKE_HOOKS_INVOKE,
     HANDSHAKE_HOOKS_DONE
   } sslHandshakeHookState;
+
+  enum {
+    SSL_CERT_VERIFY_HOOK_INIT,
+    SSL_CERT_VERIFY_HOOK_INVOKE,
+    SSL_CERT_VERIFY_HOOK_ACTIVE,
+    SSL_CERT_VERIFY_HOOK_DONE
+  } sslCertVerifyHookState;
 
   const SSLNextProtocolSet *npnSet;
   Continuation *npnEndpoint;

@@ -461,6 +461,9 @@ write_to_net_io(NetHandler *nh, UnixNetVConnection *vc, EThread *thread)
       vc->write.triggered = 1;
       if (vc->write.enabled)
         nh->write_ready_list.in_or_enqueue(vc);
+    } else if (ret == SSL_WAIT_FOR_HOOK) {
+        // Don't reschedule, when IO is reenabled we'll be back
+        return;
     } else
       write_reschedule(nh, vc);
     return;
